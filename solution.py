@@ -103,7 +103,6 @@ class SWAGPredictor(object):
         self,
         train_images: torch.Tensor,
         weights_dir: pathlib.Path,
-        # TODO(1): change inference_mode to InferenceMode.SWAG_DIAGONAL
         # TODO(2): change inference_mode to InferenceMode.SWAG_FULL
         inference_mode: InferenceMode = InferenceMode.SWAG_DIAGONAL,
         # TODO(2): optionally add/tweak hyperparameters
@@ -148,7 +147,7 @@ class SWAGPredictor(object):
         #  as a dictionary that maps from weight name to values.
         #  Hint: you never need to consider the full vector of weights,
         #  but can always act on per-layer weights (in the format that _create_weight_copy() returns)
-        se
+        self.weights_SWAG_diag = self._create_weight_copy()
 
         # Full SWAG
         # TODO(2): create attributes for SWAG-full
@@ -169,7 +168,7 @@ class SWAGPredictor(object):
         # SWAG-diagonal
         for name, param in copied_params.items():
             # TODO(1): update SWAG-diagonal attributes for weight `name` using `copied_params` and `param`
-            raise NotImplementedError("Update SWAG-diagonal statistics")
+            self.weights_SWAG_diag[name] += param**2
 
         # Full SWAG
         if self.inference_mode == InferenceMode.SWAG_FULL:
@@ -205,7 +204,7 @@ class SWAGPredictor(object):
         )
 
         # TODO(1): Perform initialization for SWAG fitting
-        raise NotImplementedError("Initialize SWAG fitting")
+        t_SWAG_diag = 0
 
         self.network.train()
         with tqdm.trange(self.swag_training_epochs, desc="Running gradient descent for SWA") as pbar:
@@ -237,7 +236,8 @@ class SWAGPredictor(object):
                     pbar.set_postfix(progress_dict)
 
                 # TODO(1): Implement periodic SWAG updates using the attributes defined in __init__
-                raise NotImplementedError("Periodically update SWAG statistics")
+                t_SWAG_diag += 1
+                self.update_swag_statistics()
 
     def calibrate_confidence(self, validation_data: torch.utils.data.Dataset) -> None:
         """
