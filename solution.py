@@ -147,7 +147,8 @@ class SWAGPredictor(object):
         #  as a dictionary that maps from weight name to values.
         #  Hint: you never need to consider the full vector of weights,
         #  but can always act on per-layer weights (in the format that _create_weight_copy() returns)
-        self.weights_SWAG_diag = self._create_weight_copy()
+        self.weight_mean = self._create_weight_copy()
+        self.weight_sq_mean = self._create_weight_copy()
 
         # Full SWAG
         # TODO(2): create attributes for SWAG-full
@@ -157,7 +158,7 @@ class SWAGPredictor(object):
         # TODO(2): create additional attributes, e.g., for calibration
         self._calibration_threshold = None  # this is an example, feel free to be creative
 
-    def update_swag_statistics(self) -> None:
+    def update_swag_statistics(self, t) -> None:
         """
         Update SWAG statistics with the current weights of self.network.
         """
@@ -168,7 +169,8 @@ class SWAGPredictor(object):
         # SWAG-diagonal
         for name, param in copied_params.items():
             # TODO(1): update SWAG-diagonal attributes for weight `name` using `copied_params` and `param`
-            self.weights_SWAG_diag[name] += param**2
+            self.weight_mean[name] = (t*self.weight_mean[name] + param)/(t+1)
+            self.weight_sq_mean[name] = (t*self.weight_sq_mean[name] + param ** 2)/(t+1)
 
         # Full SWAG
         if self.inference_mode == InferenceMode.SWAG_FULL:
@@ -204,7 +206,7 @@ class SWAGPredictor(object):
         )
 
         # TODO(1): Perform initialization for SWAG fitting
-        t_SWAG_diag = 0
+        t = 0
 
         self.network.train()
         with tqdm.trange(self.swag_training_epochs, desc="Running gradient descent for SWA") as pbar:
@@ -235,9 +237,8 @@ class SWAGPredictor(object):
                     progress_dict["avg. epoch accuracy"] = avg_accuracy
                     pbar.set_postfix(progress_dict)
 
-                # TODO(1): Implement periodic SWAG updates using the attributes defined in __init__
-                t_SWAG_diag += 1
-                self.update_swag_statistics()
+                self.update_swag_statistics(t)
+                t += 1
 
     def calibrate_confidence(self, validation_data: torch.utils.data.Dataset) -> None:
         """
