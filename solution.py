@@ -280,11 +280,11 @@ class SWAGPredictor(object):
         model_predictions = []
         for _ in tqdm.trange(self.num_bma_samples, desc="Performing Bayesian model averaging"):
             # TODO(1): Sample new parameters for self.network from the SWAG approximate posterior
-            raise NotImplementedError("Sample network parameters")
+            self.sample_parameters()
 
             # TODO(1): Perform inference for all samples in `loader` using current model sample,
             #  and add the predictions to model_predictions
-            raise NotImplementedError("Perform inference using current model")
+            model_predictions.append(self.network(loader))
 
         assert len(model_predictions) == self.num_bma_samples
         assert all(
@@ -313,9 +313,8 @@ class SWAGPredictor(object):
             # SWAG-diagonal part
             z_diag = torch.randn(param.size())
             # TODO(1): Sample parameter values for SWAG-diagonal
-            raise NotImplementedError("Sample parameter for SWAG-diagonal")
-            mean_weights = ...
-            std_weights = ...
+            mean_weights = self.weight_mean[name]
+            std_weights = self.weight_sq_mean[name] - self.weight_mean[name] ** 2
             assert mean_weights.size() == param.size() and std_weights.size() == param.size()
 
             # Diagonal part
