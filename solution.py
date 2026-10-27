@@ -15,7 +15,7 @@ from matplotlib import pyplot as plt
 
 from util import paint_reliability_diagram, compute_cost, seed_setup, calculate_calibration_curve
 
-ENABLE_EXTENDED_ANALYSIS = False
+ENABLE_EXTENDED_ANALYSIS = True
 """
 Set `ENABLE_EXTENDED_ANALYSIS` to `True` in order to generate additional plots on validation data.
 """
@@ -112,7 +112,7 @@ class SWAGPredictor(object):
         swag_lr: float = 0.045,
         swag_update_interval: int = 1,
         max_rank_deviation_matrix: int = 15,
-        num_bma_samples: int = 30,
+        num_bma_samples: int = 2,
     ):
         """
         :param train_images: Training images (for storage only)
@@ -143,7 +143,7 @@ class SWAGPredictor(object):
         self.training_dataset = torch.utils.data.TensorDataset(train_images)
 
         # SWAG-diagonal
-        # TODO(1): create attributes for SWAG-diagonal
+        #  Create attributes for SWAG-diagonal
         #  Hint: self._create_weight_copy() creates an all-zero copy of the weights
         #  as a dictionary that maps from weight name to values.
         #  Hint: you never need to consider the full vector of weights,
@@ -169,7 +169,7 @@ class SWAGPredictor(object):
 
         # SWAG-diagonal
         for name, param in copied_params.items():
-            # TODO(1): update SWAG-diagonal attributes for weight `name` using `copied_params` and `param`
+            # Update SWAG-diagonal attributes for weight `name` using `copied_params` and `param`
             self.weight_mean[name] = (t*self.weight_mean[name] + param)/(t+1)
             self.weight_sq_mean[name] = (t*self.weight_sq_mean[name] + param ** 2)/(t+1)
 
@@ -206,7 +206,7 @@ class SWAGPredictor(object):
             steps_per_epoch=len(loader),
         )
 
-        # TODO(1): Perform initialization for SWAG fitting
+        # Perform initialization for SWAG fitting
         t = 0
 
         self.network.train()
@@ -280,10 +280,10 @@ class SWAGPredictor(object):
         # and perform inference with each network on all samples in loader.
         model_predictions = []
         for _ in tqdm.trange(self.num_bma_samples, desc="Performing Bayesian model averaging"):
-            # TODO(1): Sample new parameters for self.network from the SWAG approximate posterior
+            # Sample new parameters for self.network from the SWAG approximate posterior
             self.sample_parameters()
 
-            # TODO(1): Perform inference for all samples in `loader` using current model sample,
+            # Perform inference for all samples in `loader` using current model sample,
             #  and add the predictions to model_predictions
             batch_predictions = []
             # Unpack batch with (x,)
@@ -302,13 +302,13 @@ class SWAGPredictor(object):
             for sample_predictions in model_predictions
         )
 
-        # TODO(1): Average predictions from different model samples into bma_probabilities
+        # Average predictions from different model samples into bma_probabilities
         # all model samples -> (S, N, C)
         all_predictions = torch.stack(model_predictions, dim=0)
 
         # BMA: average over the samples axis -> (N, C)
-        bma_predictions = torch.mean(all_predictions, dim=0)
-        bma_probabilities = ...
+        all_probabilities = torch.softmax(all_predictions, dim=-1)
+        bma_probabilities = torch.mean(all_probabilities, dim=0)
 
         assert bma_probabilities.dim() == 2 and bma_probabilities.size(1) == 6  # N x C
         return bma_probabilities
@@ -325,17 +325,18 @@ class SWAGPredictor(object):
             # SWAG-diagonal part
             z_diag = torch.randn(param.size())
             mean_weights = self.weight_mean[name]
-            std_weights = self.weight_sq_mean[name] - self.weight_mean[name] ** 2
+            std_weights = torch.sqrt(self.weight_sq_mean[name] - self.weight_mean[name] ** 2)
             assert mean_weights.size() == param.size() and std_weights.size() == param.size()
 
             # Diagonal part
+            # TODO(2): Add factor 1/np.sqrt(2)
             sampled_weight = mean_weights + std_weights * z_diag
 
             # Full SWAG part
             if self.inference_mode == InferenceMode.SWAG_FULL:
                 # TODO(2): Sample parameter values for full SWAG
                 raise NotImplementedError("Sample parameter for full SWAG")
-                sampled_weight += ...
+                sampled_weight +=
 
             # Modify weight value in-place; directly changing self.network
             param.data = sampled_weight
