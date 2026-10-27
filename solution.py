@@ -58,7 +58,8 @@ def main():
     swag_inference = SWAGPredictor(
         train_images=training_dataset.tensors[0],
         weights_dir=model_location,
-        swag_training_epochs=0
+        swag_training_epochs=5,
+        num_bma_samples=5,
     )
     training_loader = torch.utils.data.DataLoader(
         training_dataset,
@@ -112,7 +113,7 @@ class SWAGPredictor(object):
         swag_lr: float = 0.045,
         swag_update_interval: int = 1,
         max_rank_deviation_matrix: int = 15,
-        num_bma_samples: int = 2,
+        num_bma_samples: int = 30,
     ):
         """
         :param train_images: Training images (for storage only)
@@ -336,7 +337,7 @@ class SWAGPredictor(object):
             if self.inference_mode == InferenceMode.SWAG_FULL:
                 # TODO(2): Sample parameter values for full SWAG
                 raise NotImplementedError("Sample parameter for full SWAG")
-                sampled_weight +=
+                # sampled_weight +=
 
             # Modify weight value in-place; directly changing self.network
             param.data = sampled_weight
