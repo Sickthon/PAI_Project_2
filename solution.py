@@ -58,6 +58,7 @@ def main():
     swag_inference = SWAGPredictor(
         train_images=training_dataset.tensors[0],
         weights_dir=model_location,
+        swag_training_epochs=0
     )
     training_loader = torch.utils.data.DataLoader(
         training_dataset,
@@ -284,7 +285,14 @@ class SWAGPredictor(object):
 
             # TODO(1): Perform inference for all samples in `loader` using current model sample,
             #  and add the predictions to model_predictions
-            model_predictions.append(self.network(loader))
+            batch_predictions = []
+            # Unpack batch with (x,)
+            for (x,) in loader:
+                batch_predictions.append(self.network(x))   # each: (B, C)
+
+            # all batches of this one model sample -> (N, C)
+            model_predictions.append(torch.cat(batch_predictions, dim=0))
+
 
         assert len(model_predictions) == self.num_bma_samples
         assert all(
@@ -295,7 +303,11 @@ class SWAGPredictor(object):
         )
 
         # TODO(1): Average predictions from different model samples into bma_probabilities
-        raise NotImplementedError("Aggregate predictions from model samples")
+        # all model samples -> (S, N, C)
+        all_predictions = torch.stack(model_predictions, dim=0)
+
+        # BMA: average over the samples axis -> (N, C)
+        bma_predictions = torch.mean(all_predictions, dim=0)
         bma_probabilities = ...
 
         assert bma_probabilities.dim() == 2 and bma_probabilities.size(1) == 6  # N x C
@@ -312,7 +324,6 @@ class SWAGPredictor(object):
         for name, param in self.network.named_parameters():
             # SWAG-diagonal part
             z_diag = torch.randn(param.size())
-            # TODO(1): Sample parameter values for SWAG-diagonal
             mean_weights = self.weight_mean[name]
             std_weights = self.weight_sq_mean[name] - self.weight_mean[name] ** 2
             assert mean_weights.size() == param.size() and std_weights.size() == param.size()
@@ -329,9 +340,7 @@ class SWAGPredictor(object):
             # Modify weight value in-place; directly changing self.network
             param.data = sampled_weight
 
-        # TODO(1): Don't forget to update batch normalization statistics using self._update_batchnorm_statistics()
-        #  in the appropriate place!
-        raise NotImplementedError("Update batch normalization statistics for newly sampled network")
+        self._update_batchnorm_statistics()
 
     def decide_labels(self, predicted_probabilities: torch.Tensor) -> torch.Tensor:
         """
