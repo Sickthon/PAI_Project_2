@@ -58,7 +58,7 @@ def main():
     swag_inference = SWAGPredictor(
         train_images=training_dataset.tensors[0],
         weights_dir=model_location,
-        swag_training_epochs=5,
+        swag_training_epochs=20,
         num_bma_samples=5,
     )
     training_loader = torch.utils.data.DataLoader(
@@ -106,7 +106,7 @@ class SWAGPredictor(object):
         train_images: torch.Tensor,
         weights_dir: pathlib.Path,
         # TODO(2): change inference_mode to InferenceMode.SWAG_FULL
-        inference_mode: InferenceMode = InferenceMode.SWAG_DIAGONAL,
+        inference_mode: InferenceMode = InferenceMode.SWAG_FULL,
         # TODO(2): optionally add/tweak hyperparameters
         swag_training_epochs: int = 30,
         swag_batch_size: int = 16,
@@ -155,6 +155,8 @@ class SWAGPredictor(object):
         # Full SWAG
         # TODO(2): create attributes for SWAG-full
         #  Hint: check collections.deque
+        assert(self.max_rank_deviation_matrix > 1, "max_rank_deviation_matrix must be greater than 1")
+        self.weight_mean_dequeue = collections.deque(maxlen=self.max_rank_deviation_matrix)
 
         # Calibration, prediction, and other attributes
         # TODO(2): create additional attributes, e.g., for calibration
@@ -177,7 +179,7 @@ class SWAGPredictor(object):
         # Full SWAG
         if self.inference_mode == InferenceMode.SWAG_FULL:
             # TODO(2): update full SWAG attributes for weight `name` using `copied_params` and `param`
-            raise NotImplementedError("Update full SWAG statistics")
+            self.weight_mean_dequeue.append({name: param for name, param in copied_params.items()})
 
     def fit_swag_model(self, loader: torch.utils.data.DataLoader) -> None:
         """
@@ -321,6 +323,10 @@ class SWAGPredictor(object):
         Hence, after calling this method, self.network corresponds to a new posterior sample.
         """
 
+        #Todo(2) sample z_2
+        k = len(self.weight_mean_dequeue)
+        z_2 = torch.randn(k).reshape(-1, 1)
+
         # Instead of acting on a full vector of parameters, all operations can be done on per-layer parameters.
         for name, param in self.network.named_parameters():
             # SWAG-diagonal part
@@ -330,14 +336,16 @@ class SWAGPredictor(object):
             assert mean_weights.size() == param.size() and std_weights.size() == param.size()
 
             # Diagonal part
-            # TODO(2): Add factor 1/np.sqrt(2)
-            sampled_weight = mean_weights + std_weights * z_diag
+            sampled_weight = mean_weights + 1/np.sqrt(2)*std_weights * z_diag
 
             # Full SWAG part
             if self.inference_mode == InferenceMode.SWAG_FULL:
                 # TODO(2): Sample parameter values for full SWAG
-                raise NotImplementedError("Sample parameter for full SWAG")
-                # sampled_weight +=
+                D_hat = torch.stack(
+                     [theta_i[name] - self.weight_mean[name] for theta_i in self.weight_mean_dequeue], dim=-1
+                ).reshape(-1, k)
+
+                sampled_weight += 1/np.sqrt(2*(k -1 )) * (D_hat @ z_2).reshape(param.shape)
 
             # Modify weight value in-place; directly changing self.network
             param.data = sampled_weight
