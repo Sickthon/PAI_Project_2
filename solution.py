@@ -58,8 +58,8 @@ def main():
     swag_inference = SWAGPredictor(
         train_images=training_dataset.tensors[0],
         weights_dir=model_location,
-        swag_training_epochs=30,
-        num_bma_samples=20,
+        swag_training_epochs=3,
+        num_bma_samples=1,
     )
     training_loader = torch.utils.data.DataLoader(
         training_dataset,
@@ -126,6 +126,7 @@ class SWAGPredictor(object):
         :param max_rank_deviation_matrix: Rank of deviation matrix for full SWAG
         :param num_bma_samples: Number of networks to sample for Bayesian model averaging during prediction
         """
+        assert (swag_training_epochs >= 2, max_rank_deviation_matrix >= 2), "Bayesian model averaging requires a deviation matrix of rank at least 2."
 
         self.weights_dir = weights_dir
         self.inference_mode = inference_mode
@@ -160,7 +161,8 @@ class SWAGPredictor(object):
 
         # Calibration, prediction, and other attributes
         # TODO(2): create additional attributes, e.g., for calibration
-        self._calibration_threshold = None  # this is an example, feel free to be creative
+        self._calibration_threshold = np.array  # this is an example, feel free to be creative
+        self._adaptive_calibration_thresholds = torch.full((6,), 0.7)
 
     def update_swag_statistics(self, t) -> None:
         """
@@ -269,12 +271,22 @@ class SWAGPredictor(object):
         all_pred_probabilities = self.predict_probabilities(val_images)
         max_pred_probabilities, argmax_pred_labels = torch.max(all_pred_probabilities, dim=-1)
 
-        # Choose threshold here
-        predicted_labels = self.decide_labels(all_pred_probabilities)
-
-        # group by label
-
-
+        # Choose threshold per predicted label here
+        for i in range(6):
+            max_pred_probabilities_i = max_pred_probabilities[argmax_pred_labels == i]
+            val_labels_i = val_labels[argmax_pred_labels == i]
+            threshold_values = [0.0] + torch.unique(max_pred_probabilities_i, sorted=True).tolist()
+            costs = []
+            for threshold in threshold_values:
+                thresholded_predictions = torch.where(max_pred_probabilities_i <= threshold,
+                                                      -1 * torch.ones_like(max_pred_probabilities_i),
+                                                       i * torch.ones_like(max_pred_probabilities_i))
+                costs.append(compute_cost(thresholded_predictions, val_labels_i).item())
+            best_threshold_index = np.argmin(costs)
+            # Set threshold_i
+            self._adaptive_calibration_thresholds[i] = (
+                    1/2 * (self._calibration_threshold + threshold_values[best_threshold_index]))
+            assert 0.0 <= self._adaptive_calibration_thresholds[i] <= 1.0
 
         assert val_images.size() == (140, 3, 60, 60)  # N x C x H x W
         assert val_labels.size() == (140,)
@@ -388,7 +400,7 @@ class SWAGPredictor(object):
         # A bit better: use a threshold to decide whether to return a label or "don't know" (label -1)
         # TODO(2): implement a different decision rule if desired
         return torch.where(
-            label_probabilities >= self._calibration_threshold,
+            label_probabilities > self._adaptive_calibration_thresholds[max_likelihood_labels],
             max_likelihood_labels,
             torch.ones_like(max_likelihood_labels) * -1,
         )
