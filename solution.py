@@ -58,8 +58,8 @@ def main():
     swag_inference = SWAGPredictor(
         train_images=training_dataset.tensors[0],
         weights_dir=model_location,
-        swag_training_epochs=20,
-        num_bma_samples=5,
+        swag_training_epochs=30,
+        num_bma_samples=20,
     )
     training_loader = torch.utils.data.DataLoader(
         training_dataset,
@@ -256,11 +256,26 @@ class SWAGPredictor(object):
             return
 
         # TODO(1): pick a prediction threshold, either constant or adaptive.
-        self._calibration_threshold = 2.0 / 3.0
+        self._calibration_threshold = 0.7
 
-        # TODO(2): perform additional calibration if desired.
+        # TODO(3): perform additional calibration if desired.
         #  Feel free to remove or change the prediction threshold.
         val_images, val_snow_labels, val_cloud_labels, val_labels = validation_data.tensors
+
+        # predict on val images
+        # Predict class probabilities on test data,
+        # most likely classes (according to the max predicted probability),
+        # and classes as predicted by your SWAG implementation.
+        all_pred_probabilities = self.predict_probabilities(val_images)
+        max_pred_probabilities, argmax_pred_labels = torch.max(all_pred_probabilities, dim=-1)
+
+        # Choose threshold here
+        predicted_labels = self.decide_labels(all_pred_probabilities)
+
+        # group by label
+
+
+
         assert val_images.size() == (140, 3, 60, 60)  # N x C x H x W
         assert val_labels.size() == (140,)
         assert val_snow_labels.size() == (140,)
